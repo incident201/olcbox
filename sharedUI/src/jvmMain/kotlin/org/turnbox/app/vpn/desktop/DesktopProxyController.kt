@@ -14,6 +14,7 @@ internal interface DesktopProxyController {
             return when (DesktopPaths.os) {
                 DesktopOs.MacOS -> MacOsProxyController()
                 DesktopOs.Windows -> WindowsProxyController()
+                DesktopOs.Linux -> UnsupportedProxyController()
                 DesktopOs.Other -> UnsupportedProxyController()
             }
         }

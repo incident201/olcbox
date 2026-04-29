@@ -20,8 +20,12 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.turnbox.app.data.model.LocationConfig
 import org.turnbox.app.data.repository.LocationsRepository
+import org.turnbox.app.desktop.DesktopOs
+import org.turnbox.app.desktop.DesktopPaths
 import org.turnbox.app.vpn.desktop.DesktopNativeAssets
 import org.turnbox.app.vpn.desktop.DesktopProxyController
+import org.turnbox.app.vpn.desktop.LinuxPrivilege
+import org.turnbox.app.vpn.desktop.LinuxTunController
 import org.turnbox.app.vpn.desktop.OlcRtcCommand
 import org.turnbox.app.vpn.desktop.PacServer
 import java.net.InetSocketAddress
@@ -56,8 +60,11 @@ class DesktopVpnManager private constructor(
 
     private var operationJob: Job? = null
     private var logJob: Job? = null
+    private var tunLogJob: Job? = null
     private var process: Process? = null
+    private var tunProcess: Process? = null
     private var generation = 0L
+    private val linuxTunController = LinuxTunController(::addLog)
 
     override fun needsPermission(): Boolean = false
 
@@ -67,7 +74,7 @@ class DesktopVpnManager private constructor(
         operationJob = scope.launch {
             mutex.withLock {
                 if (requestGeneration != generation) return@withLock
-                startProxyMode()
+                startDesktopMode()
             }
         }
     }
@@ -77,7 +84,7 @@ class DesktopVpnManager private constructor(
         operationJob?.cancel()
         operationJob = scope.launch {
             mutex.withLock {
-                stopProxyMode()
+                stopDesktopMode()
             }
         }
     }
@@ -96,7 +103,7 @@ class DesktopVpnManager private constructor(
             val port = allocateLocalPort()
             val binary = DesktopNativeAssets.resolveOlcRtcBinary()
             val ready = CompletableDeferred<Unit>()
-            val checkProcess = startOlcRtcProcess(binary, location, port, ready, logOutput = false)
+            val checkProcess = startOlcRtcProcess(binary, location, port, ready, logOutput = false, privileged = false)
             val startedAt = System.currentTimeMillis()
             try {
                 waitForOlcRtcReady(checkProcess, ready, port)
@@ -112,13 +119,13 @@ class DesktopVpnManager private constructor(
             generation++
             operationJob?.cancel()
             mutex.withLock {
-                stopProxyMode()
+                stopDesktopMode()
             }
             scope.cancel()
         }
     }
 
-    private suspend fun startProxyMode() {
+    private suspend fun startDesktopMode() {
         if (_status.value is VpnStatus.Connected || _status.value is VpnStatus.Connecting) return
 
         setStatus(VpnStatus.Connecting)
@@ -133,37 +140,66 @@ class DesktopVpnManager private constructor(
         try {
             val binary = DesktopNativeAssets.resolveOlcRtcBinary()
             val ready = CompletableDeferred<Unit>()
-            process = startOlcRtcProcess(binary, location, PacServer.LOCAL_SOCKS_PORT, ready, logOutput = true)
+            val useLinuxTun = DesktopPaths.os == DesktopOs.Linux
+            process = startOlcRtcProcess(
+                binary = binary,
+                location = location,
+                socksPort = PacServer.LOCAL_SOCKS_PORT,
+                ready = ready,
+                logOutput = true,
+                privileged = useLinuxTun
+            )
             waitForOlcRtcReady(process ?: error("olcRTC process is missing"), ready, PacServer.LOCAL_SOCKS_PORT)
-            pacServer.start()
-            proxyController.enable(pacServer.url)
+            if (useLinuxTun) {
+                val hevBinary = DesktopNativeAssets.resolveHevSocks5TunnelBinary()
+                tunProcess = linuxTunController.start(hevBinary)
+                startTunLogReader(tunProcess ?: error("hev-socks5-tunnel process is missing"))
+            } else {
+                pacServer.start()
+                proxyController.enable(pacServer.url)
+            }
             setStatus(VpnStatus.Connected)
-            addLog("Desktop proxy connected")
+            addLog(if (useLinuxTun) "Desktop Linux TUN connected" else "Desktop proxy connected")
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            addLog("Desktop proxy start failed: ${e.message}")
-            runCatching { proxyController.restore() }.onFailure { addLog("Proxy restore failed: ${it.message}") }
+            addLog("Desktop start failed: ${e.message}")
+            if (DesktopPaths.os == DesktopOs.Linux) {
+                runCatching { linuxTunController.stop(tunProcess) }
+                    .onFailure { addLog("Linux TUN cleanup failed: ${it.message}") }
+                tunProcess = null
+            } else {
+                runCatching { proxyController.restore() }.onFailure { addLog("Proxy restore failed: ${it.message}") }
+            }
             pacServer.stop()
             stopProcess(process)
             process = null
-            setStatus(VpnStatus.Error(e.message ?: "Desktop proxy failed"))
+            setStatus(VpnStatus.Error(e.message ?: "Desktop start failed"))
         }
     }
 
-    private suspend fun stopProxyMode() {
-        if (_status.value is VpnStatus.Disconnected && process == null) return
+    private suspend fun stopDesktopMode() {
+        if (_status.value is VpnStatus.Disconnected && process == null && tunProcess == null) return
 
         setStatus(VpnStatus.Stopping)
-        runCatching { proxyController.restore() }.onFailure {
-            addLog("Proxy restore failed: ${it.message}")
+        if (DesktopPaths.os == DesktopOs.Linux) {
+            runCatching { linuxTunController.stop(tunProcess) }.onFailure {
+                addLog("Linux TUN stop failed: ${it.message}")
+            }
+            tunProcess = null
+        } else {
+            runCatching { proxyController.restore() }.onFailure {
+                addLog("Proxy restore failed: ${it.message}")
+            }
         }
         pacServer.stop()
         stopProcess(process)
         process = null
         logJob?.cancel()
         logJob = null
+        tunLogJob?.cancel()
+        tunLogJob = null
         setStatus(VpnStatus.Disconnected)
-        addLog("Desktop proxy stopped")
+        addLog(if (DesktopPaths.os == DesktopOs.Linux) "Desktop Linux TUN stopped" else "Desktop proxy stopped")
     }
 
     private fun startOlcRtcProcess(
@@ -171,11 +207,15 @@ class DesktopVpnManager private constructor(
         location: LocationConfig,
         socksPort: Int,
         ready: CompletableDeferred<Unit>,
-        logOutput: Boolean
+        logOutput: Boolean,
+        privileged: Boolean
     ): Process {
         val command = OlcRtcCommand(binary, location, PacServer.LOCAL_SOCKS_HOST, socksPort).args()
         addLog("Starting olcRTC provider=${location.bypassProvider}, room=${location.id}, port=$socksPort")
-        val processBuilder = ProcessBuilder(command)
+        if (privileged) {
+            addLog("Linux TUN mode starts olcRTC with elevated privileges to bypass the TUN route")
+        }
+        val processBuilder = ProcessBuilder(if (privileged) LinuxPrivilege.command(command) else command)
             .redirectErrorStream(true)
         processBuilder.environment()["NO_PROXY"] = "127.0.0.1,localhost"
         processBuilder.environment()["no_proxy"] = "127.0.0.1,localhost"
@@ -197,6 +237,18 @@ class DesktopVpnManager private constructor(
             logJob = readerJob
         }
         return startedProcess
+    }
+
+    private fun startTunLogReader(target: Process) {
+        tunLogJob?.cancel()
+        tunLogJob = scope.launch {
+            target.inputStream.bufferedReader().useLines { lines ->
+                lines.forEach { line ->
+                    if (!isActive) return@forEach
+                    addLog("tun: $line")
+                }
+            }
+        }
     }
 
     private suspend fun waitForOlcRtcReady(
@@ -233,8 +285,10 @@ class DesktopVpnManager private constructor(
     private fun stopProcess(target: Process?) {
         if (target == null) return
         if (!target.isAlive) return
+        target.toHandle().descendants().forEach { it.destroy() }
         target.destroy()
         if (!target.waitFor(PROCESS_STOP_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+            target.toHandle().descendants().forEach { it.destroyForcibly() }
             target.destroyForcibly()
             target.waitFor(PROCESS_KILL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         }

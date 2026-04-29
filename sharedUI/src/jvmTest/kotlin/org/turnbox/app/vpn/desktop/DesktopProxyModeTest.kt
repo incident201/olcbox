@@ -85,4 +85,31 @@ class DesktopProxyModeTest {
         assertContains(restore.flatten(), "AutoConfigURL")
         assertContains(restore.flatten(), "delete")
     }
+
+    @Test
+    fun linuxTunConfigUsesLocalSocksAndIpv4MapDns() {
+        val config = LinuxTunController.configContent()
+
+        assertContains(config, "name: turnbox0")
+        assertContains(config, "ipv4: 10.0.88.88")
+        assertContains(config, "address: 127.0.0.1")
+        assertContains(config, "port: 10808")
+        assertContains(config, "udp: 'tcp'")
+        assertContains(config, "mapdns:")
+        assertContains(config, "network: 100.64.0.0")
+    }
+
+    @Test
+    fun linuxTunScriptsRouteUserTrafficThroughTunAndKeepRootDirect() {
+        val up = LinuxTunController.upScriptContent()
+        val down = LinuxTunController.downScriptContent()
+
+        assertContains(up, "ip rule add uidrange 0-0 lookup main pref 10")
+        assertContains(up, "ip route add default dev turnbox0 table 51820")
+        assertContains(up, "ip rule add lookup 51820 pref 20")
+        assertContains(up, "resolvectl dns turnbox0 1.1.1.1")
+        assertContains(down, "ip rule del uidrange 0-0 lookup main pref 10")
+        assertContains(down, "ip route flush table 51820")
+        assertContains(down, "resolvectl revert turnbox0")
+    }
 }

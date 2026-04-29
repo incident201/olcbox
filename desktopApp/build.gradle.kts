@@ -1,3 +1,4 @@
+import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
@@ -13,8 +14,20 @@ dependencies {
 }
 
 val olcrtcRepo = providers.environmentVariable("OLCRTC_REPO")
-    .orElse("/Users/nigga/Personal/Projects/olcrtc")
+    .orElse("/Users/alexanderanisimov/Personal/Projects/olcrtc")
 val generatedNativeResources = layout.buildDirectory.dir("generated/desktopNativeResources")
+val hevSocks5TunnelSourceDir = rootProject.layout.projectDirectory.dir("androidApp/src/main/jni/hev-socks5-tunnel")
+val currentBuildOs = OperatingSystem.current()
+
+fun desktopArchName(arch: String): String = when (arch.lowercase()) {
+    "x86_64", "amd64" -> "amd64"
+    "aarch64", "arm64" -> "arm64"
+    else -> error("Unsupported desktop architecture: $arch")
+}
+
+fun shellQuote(value: String): String = "'${value.replace("'", "'\"'\"'")}'"
+
+val hostDesktopArch = desktopArchName(System.getProperty("os.arch"))
 
 fun registerOlcRtcBuildTask(
     taskName: String,
@@ -59,8 +72,47 @@ val buildOlcRtcWindowsAmd64 = registerOlcRtcBuildTask(
     outputName = "olcrtc-windows-amd64.exe"
 )
 
+val buildOlcRtcLinuxAmd64 = registerOlcRtcBuildTask(
+    taskName = "buildOlcRtcLinuxAmd64",
+    goos = "linux",
+    goarch = "amd64",
+    outputName = "olcrtc-linux-amd64"
+)
+
+val buildOlcRtcLinuxArm64 = registerOlcRtcBuildTask(
+    taskName = "buildOlcRtcLinuxArm64",
+    goos = "linux",
+    goarch = "arm64",
+    outputName = "olcrtc-linux-arm64"
+)
+
+val desktopNativeAssetTasks = mutableListOf<Any>(
+    buildOlcRtcDarwinArm64,
+    buildOlcRtcWindowsAmd64,
+    buildOlcRtcLinuxAmd64,
+    buildOlcRtcLinuxArm64
+)
+
+if (currentBuildOs.isLinux) {
+    val buildHevSocks5TunnelLinux = tasks.register<Exec>("buildHevSocks5TunnelLinux") {
+        val outputFile = generatedNativeResources.map {
+            it.file("native/hev-socks5-tunnel-linux-$hostDesktopArch")
+        }
+        val output = outputFile.get().asFile
+
+        outputs.file(outputFile)
+        workingDir = hevSocks5TunnelSourceDir.asFile
+        commandLine(
+            "sh",
+            "-c",
+            "mkdir -p ${shellQuote(output.parentFile.absolutePath)} && make clean exec && install -m 0755 bin/hev-socks5-tunnel ${shellQuote(output.absolutePath)}"
+        )
+    }
+    desktopNativeAssetTasks.add(buildHevSocks5TunnelLinux)
+}
+
 tasks.register("buildDesktopNativeAssets") {
-    dependsOn(buildOlcRtcDarwinArm64, buildOlcRtcWindowsAmd64)
+    dependsOn(desktopNativeAssetTasks)
 }
 
 sourceSets {
@@ -70,7 +122,7 @@ sourceSets {
 }
 
 tasks.named("processResources") {
-    dependsOn(buildOlcRtcDarwinArm64, buildOlcRtcWindowsAmd64)
+    dependsOn(desktopNativeAssetTasks)
 }
 
 compose.desktop {

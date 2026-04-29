@@ -7,6 +7,7 @@ import kotlin.io.path.Path
 internal enum class DesktopOs {
     MacOS,
     Windows,
+    Linux,
     Other
 }
 
@@ -17,6 +18,7 @@ internal object DesktopPaths {
             return when {
                 name.contains("mac") || name.contains("darwin") -> DesktopOs.MacOS
                 name.contains("windows") -> DesktopOs.Windows
+                name.contains("linux") -> DesktopOs.Linux
                 else -> DesktopOs.Other
             }
         }
@@ -32,6 +34,7 @@ internal object DesktopPaths {
                 val appData = System.getenv("APPDATA")?.takeIf { it.isNotBlank() }
                 (appData?.let { Path(it) } ?: home.resolve("AppData").resolve("Roaming")).resolve("Turnbox")
             }
+            DesktopOs.Linux,
             DesktopOs.Other -> home.resolve(".turnbox")
         }
         Files.createDirectories(dir)

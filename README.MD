@@ -3,7 +3,8 @@
 Kotlin Multiplatform app with shared Compose UI.
 
 Android uses `VpnService` with bundled `hev-socks5-tunnel` and `olcrtc`.
-Desktop uses proxy mode: local `olcrtc` SOCKS5 plus OS PAC proxy settings.
+macOS and Windows desktop builds use proxy mode: local `olcrtc` SOCKS5 plus OS PAC proxy settings.
+Linux desktop builds use TUN mode: local `olcrtc` SOCKS5 plus bundled `hev-socks5-tunnel`.
 
 ## Prerequisites
 
@@ -11,11 +12,12 @@ Desktop uses proxy mode: local `olcrtc` SOCKS5 plus OS PAC proxy settings.
 - Android Studio, Android SDK and NDK for Android builds.
 - Go for desktop builds, because `desktopApp` builds bundled `olcrtc` binaries from source.
 - The `olcrtc` fork must be available locally.
+- Linux TUN mode requires `iproute2`, `/dev/net/tun`, and root/Polkit/sudo privileges.
 
 By default Gradle expects the fork here:
 
 ```bash
-/Users/nigga/Personal/Projects/olcrtc
+/Users/alexanderanisimov/Personal/Projects/olcrtc
 ```
 
 Use `OLCRTC_REPO` if the fork is somewhere else:
@@ -99,7 +101,16 @@ Outputs:
 
 ```text
 desktopApp/build/generated/desktopNativeResources/native/olcrtc-darwin-arm64
+desktopApp/build/generated/desktopNativeResources/native/olcrtc-linux-amd64
+desktopApp/build/generated/desktopNativeResources/native/olcrtc-linux-arm64
 desktopApp/build/generated/desktopNativeResources/native/olcrtc-windows-amd64.exe
+```
+
+On Linux the same task also builds host-arch `hev-socks5-tunnel`:
+
+```text
+desktopApp/build/generated/desktopNativeResources/native/hev-socks5-tunnel-linux-amd64
+desktopApp/build/generated/desktopNativeResources/native/hev-socks5-tunnel-linux-arm64
 ```
 
 ## macOS Release
@@ -165,6 +176,22 @@ desktopApp/build/compose/binaries/main-release/deb/turnbox_1.0.0_amd64.deb
 ```
 
 Linux packaging also must be run on Linux.
+
+Linux runtime uses TUN mode, not system proxy mode. Start requires root privileges for `olcrtc`, `hev-socks5-tunnel`, and route setup. By default Turnbox tries `pkexec` first and falls back to `sudo -n`.
+
+Force sudo:
+
+```bash
+TURNBOX_LINUX_PRIVILEGE=sudo ./gradlew :desktopApp:run
+```
+
+Force Polkit:
+
+```bash
+TURNBOX_LINUX_PRIVILEGE=pkexec ./gradlew :desktopApp:run
+```
+
+The TUN interface is `turnbox0`. Stop removes the policy routes and reverts `systemd-resolved` settings when `resolvectl` is available.
 
 ## Current OS Release Shortcut
 
