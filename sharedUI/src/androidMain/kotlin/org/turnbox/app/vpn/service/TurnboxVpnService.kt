@@ -342,6 +342,7 @@ class TurnboxVpnService : VpnService() {
         setErrorOnFailure: Boolean
     ): Boolean {
         val keepProcessBound = shouldKeepProcessBound(upstream)
+        val config = location.normalized()
         return try {
             installMobileCallbacks()
             val socksPort = localSocksPort
@@ -350,15 +351,15 @@ class TurnboxVpnService : VpnService() {
                 throw IllegalStateException("SOCKS port $socksPort is still in use")
             }
             bindProcessToNetwork(upstream, "Bound to ${getNetName(upstream)}")
-            configureMobileTransport(location)
+            configureMobileTransport(config)
             addLog(
-                "Starting olcRTC provider=${location.bypassProvider}, " +
-                    "transport=${location.transport}, room=${location.id}"
+                "Starting olcRTC provider=${config.bypassProvider}, " +
+                    "transport=${config.transport}, room=${config.id}"
             )
             Mobile.start(
-                location.bypassProvider,
-                location.id,
-                location.key,
+                config.bypassProvider,
+                config.id,
+                config.key,
                 socksPort.toLong(),
                 "",
                 ""

@@ -59,6 +59,30 @@ class LocationsRepositoryImplTest {
     }
 
     @Test
+    fun normalizesStoredWbStreamAliasToCanonicalProvider() = runTest {
+        val source = FakeLocationsDataSource(
+            stored = LocationBundleV3(
+                activeLocationId = "wb",
+                locations = listOf(
+                    LocationEntry(
+                        storageId = "wb",
+                        name = "WB",
+                        id = "room-wb",
+                        key = "key-wb",
+                        bypassProvider = "wbstream"
+                    )
+                )
+            )
+        )
+
+        val active = LocationsRepositoryImpl(source).getActiveLocation()
+
+        assertNotNull(active)
+        assertEquals(LocationConfig.PROVIDER_WB_STREAM, active.bypassProvider)
+        assertEquals(LocationConfig.PROVIDER_WB_STREAM, active.location.bypassProvider)
+    }
+
+    @Test
     fun importsSingleLegacyLocationWithTurnProvider() = runTest {
         val source = FakeLocationsDataSource()
         val input = """
