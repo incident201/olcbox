@@ -103,6 +103,18 @@ val desktopNativeAssetTasks = mutableListOf<Any>(
     buildOlcRtcLinuxArm64,
     copyOlcRtcDataAssets
 )
+val hostDesktopNativeAssetTasks = mutableListOf<Any>(
+    copyOlcRtcDataAssets
+)
+
+when {
+    currentBuildOs.isMacOsX -> hostDesktopNativeAssetTasks.add(buildOlcRtcDarwinArm64)
+    currentBuildOs.isWindows -> hostDesktopNativeAssetTasks.add(buildOlcRtcWindowsAmd64)
+    currentBuildOs.isLinux -> when (hostDesktopArch) {
+        "amd64" -> hostDesktopNativeAssetTasks.add(buildOlcRtcLinuxAmd64)
+        "arm64" -> hostDesktopNativeAssetTasks.add(buildOlcRtcLinuxArm64)
+    }
+}
 
 if (currentBuildOs.isLinux) {
     val buildHevSocks5TunnelLinux = tasks.register<Exec>("buildHevSocks5TunnelLinux") {
@@ -120,6 +132,7 @@ if (currentBuildOs.isLinux) {
         )
     }
     desktopNativeAssetTasks.add(buildHevSocks5TunnelLinux)
+    hostDesktopNativeAssetTasks.add(buildHevSocks5TunnelLinux)
 }
 
 tasks.register("buildDesktopNativeAssets") {
@@ -133,7 +146,7 @@ sourceSets {
 }
 
 tasks.named("processResources") {
-    dependsOn(desktopNativeAssetTasks)
+    dependsOn(hostDesktopNativeAssetTasks)
 }
 
 compose.desktop {

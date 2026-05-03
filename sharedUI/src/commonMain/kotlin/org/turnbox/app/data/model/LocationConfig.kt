@@ -40,7 +40,7 @@ data class LocationConfig(
     companion object {
         const val PROVIDER_JAZZ = "jazz"
         const val PROVIDER_TELEMOST = "telemost"
-        const val PROVIDER_WB_STREAM = "wb_stream"
+        const val PROVIDER_WB_STREAM = "wbstream"
         const val DEFAULT_BYPASS_PROVIDER = PROVIDER_WB_STREAM
         const val TRANSPORT_DATACHANNEL = "datachannel"
         const val TRANSPORT_VP8CHANNEL = "vp8channel"
@@ -81,7 +81,8 @@ data class LocationConfig(
                 TRANSPORT_VP8CHANNEL, "vp8", "video_vp8", "video-vp8" -> TRANSPORT_VP8CHANNEL
                 else -> DEFAULT_TRANSPORT
             }
-            return normalized.takeIf { it in supportedTransportsForProvider(provider) } ?: DEFAULT_TRANSPORT
+            return normalized.takeIf { it in supportedTransportsForProvider(provider) }
+                ?: DEFAULT_TRANSPORT
         }
 
         fun providerDisplayName(provider: String): String {
@@ -131,7 +132,15 @@ data class LocationEntry(
     val vp8Batch: Int = LocationConfig.DEFAULT_VP8_BATCH
 ) {
     val location: LocationConfig
-        get() = LocationConfig(name, id, key, bypassProvider, transport, vp8Fps, vp8Batch).normalized()
+        get() = LocationConfig(
+            name,
+            id,
+            key,
+            bypassProvider,
+            transport,
+            vp8Fps,
+            vp8Batch
+        ).normalized()
 
     fun normalized(): LocationEntry {
         val config = location

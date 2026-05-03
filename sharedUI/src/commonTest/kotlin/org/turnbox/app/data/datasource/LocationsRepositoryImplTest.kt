@@ -38,7 +38,10 @@ class LocationsRepositoryImplTest {
         assertEquals(3, imported.version)
         assertEquals("berlin", imported.activeLocationId)
         assertEquals(listOf("amsterdam", "berlin"), imported.locations.map { it.storageId })
-        assertEquals(LocationConfig.PROVIDER_TELEMOST, imported.locations[1].location.bypassProvider)
+        assertEquals(
+            LocationConfig.PROVIDER_TELEMOST,
+            imported.locations[1].location.bypassProvider
+        )
     }
 
     @Test
@@ -46,7 +49,7 @@ class LocationsRepositoryImplTest {
         val source = FakeLocationsDataSource(
             legacy = listOf(
                 "legacy_a" to """{"name":"A","server":"room-a","password":"key-a","provider":"jazz"}""",
-                "legacy_b" to """{"name":"B","server":"room-b","password":"key-b","turn":{"type":"wb_stream"}}"""
+                "legacy_b" to """{"name":"B","server":"room-b","password":"key-b","turn":{"type":"wbstream"}}"""
             ),
             legacyActive = "legacy_b"
         )
@@ -131,7 +134,10 @@ class LocationsRepositoryImplTest {
         assertEquals("imported_paris", imported.activeLocationId)
         assertEquals(1, imported.locations.size)
         assertEquals("room-paris", imported.locations.first().location.id)
-        assertEquals(LocationConfig.PROVIDER_TELEMOST, imported.locations.first().location.bypassProvider)
+        assertEquals(
+            LocationConfig.PROVIDER_TELEMOST,
+            imported.locations.first().location.bypassProvider
+        )
     }
 
     @Test
@@ -167,7 +173,7 @@ class LocationsRepositoryImplTest {
                   "name": "WB",
                   "id": "room-wb",
                   "key": "${"b".repeat(64)}",
-                  "bypass_provider": "wb_stream",
+                  "bypass_provider": "wbstream",
                   "transport": "datachannel"
                 }
               ]
