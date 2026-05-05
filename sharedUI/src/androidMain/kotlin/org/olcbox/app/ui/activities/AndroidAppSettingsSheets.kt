@@ -456,8 +456,8 @@ private fun SplitTunnelingAppListContent(
     var query by remember(list) { mutableStateOf("") }
     val selectedPackages = settings.packagesFor(list)
     val normalizedQuery = query.trim().lowercase()
-    val filteredApps = remember(installedApps, normalizedQuery) {
-        if (normalizedQuery.isBlank()) {
+    val filteredApps = remember(installedApps, normalizedQuery, selectedPackages) {
+        val apps = if (normalizedQuery.isBlank()) {
             installedApps
         } else {
             installedApps.filter { app ->
@@ -465,6 +465,7 @@ private fun SplitTunnelingAppListContent(
                         app.packageName.lowercase().contains(normalizedQuery)
             }
         }
+        apps.sortedByDescending { it.packageName in selectedPackages }
     }
 
     Column(
