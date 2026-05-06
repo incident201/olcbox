@@ -2,7 +2,7 @@
 <resources>
     <!-- Quick Settings tile -->
     <string name="qs_tile_label">Olcbox</string>
-    <string name="qs_tile_connected">Подключено</string>
-    <string name="qs_tile_connecting">Подключение…</string>
-    <string name="qs_tile_disconnected">Отключено</string>
+    <string name="qs_tile_connected">Connected</string>
+    <string name="qs_tile_connecting">Connecting…</string>
+    <string name="qs_tile_disconnected">Disconnected</string>
 </resources>

@@ -5,7 +5,7 @@ interface ConfigImporter {
     fun copyToClipboard(text: String)
 
     /**
-     * Прочитать текст из внешнего источника, Any т.к. в android и ios типы разные.
+     * Reads text from an external source. Uses Any because source types differ per platform.
      */
     suspend fun readTextFromSource(source: Any): String?
 }

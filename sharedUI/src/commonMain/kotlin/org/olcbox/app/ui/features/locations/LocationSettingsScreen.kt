@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.MeetingRoom
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,6 +47,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -54,6 +56,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import org.olcbox.app.data.model.LocationConfig
 import org.olcbox.app.ui.components.PingButton
 import org.olcbox.app.ui.features.home.HomeScreenViewModel
@@ -91,35 +95,39 @@ fun LocationSettingsScreen(
         config.transport,
         config.bypassProvider
     )
+    val density = LocalDensity.current
+    val isKeyboardVisible = WindowInsets.ime.getBottom(density) > 0
 
     Scaffold(
         topBar = {
             LocationSettingsTopBar(onBack = onBack)
         },
         bottomBar = {
-            Column {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                ActionsBar(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 24.dp, vertical = 16.dp),
-                    showDelete = viewModel.editingId != null,
-                    isSaving = isSaving,
-                    isFormValid = viewModel.isFormValid,
-                    onDelete = {
-                        viewModel.editingId?.let { id ->
-                            viewModel.deleteLocation(id) { onBack() }
-                        } ?: onBack()
-                    },
-                    onSave = {
-                        viewModel.saveEditing {
-                            homeViewModel.loadCurrentConfig()
-                            homeViewModel.restartVpnIfRunning()
-                            onBack()
+            if (!isKeyboardVisible) {
+                Column {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    ActionsBar(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 24.dp, vertical = 16.dp),
+                        showDelete = viewModel.editingId != null,
+                        isSaving = isSaving,
+                        isFormValid = viewModel.isFormValid,
+                        onDelete = {
+                            viewModel.editingId?.let { id ->
+                                viewModel.deleteLocation(id) { onBack() }
+                            } ?: onBack()
+                        },
+                        onSave = {
+                            viewModel.saveEditing {
+                                homeViewModel.loadCurrentConfig()
+                                homeViewModel.restartVpnIfRunning()
+                                onBack()
+                            }
                         }
-                    }
-                )
+                    )
+                }
             }
         }
     ) { innerPadding ->
@@ -202,6 +210,21 @@ fun LocationSettingsScreen(
                     leadingIcon = Icons.Rounded.Key,
                     onClear = { viewModel.onPasswordChanged("") },
                     visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+                )
+            }
+
+            item {
+                SettingsTextField(
+                    value = config.clientId,
+                    onValueChange = viewModel::onClientIdChanged,
+                    label = "Client ID",
+                    placeholder = "android-01",
+                    enabled = !isSaving,
+                    isError = viewModel.clientIdError != null,
+                    supportingText = viewModel.clientIdError,
+                    leadingIcon = Icons.Rounded.Person,
+                    onClear = { viewModel.onClientIdChanged("") },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(
                         onDone = { focusManager.clearFocus() }

@@ -15,17 +15,21 @@ internal object OlcRtcConnectionChecker {
             repeat(CONNECTION_CHECK_ATTEMPTS) {
                 val socksPort = allocateLocalPort()
                 val result = runCatching {
-                    Mobile.check(
+                    val startedAt = System.currentTimeMillis()
+                    Mobile.startWithTransport(
                         config.bypassProvider,
                         config.transport,
                         config.id,
+                        config.clientId,
                         config.key,
                         socksPort.toLong(),
-                        CONNECTION_CHECK_TIMEOUT_MS,
-                        config.vp8Fps.toLong(),
-                        config.vp8Batch.toLong()
+                        "",
+                        ""
                     )
+                    Mobile.waitReady(CONNECTION_CHECK_TIMEOUT_MS)
+                    (System.currentTimeMillis() - startedAt).coerceAtLeast(1L)
                 }.getOrNull()
+                runCatching { Mobile.stop() }
                 if (result != null && result > 0L) return@withContext result
             }
             null

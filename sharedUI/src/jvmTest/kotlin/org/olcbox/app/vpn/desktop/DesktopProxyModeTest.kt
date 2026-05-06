@@ -36,7 +36,8 @@ class DesktopProxyModeTest {
             assertContains(command, "60")
             assertContains(command, "-vp8-batch")
             assertContains(command, "64")
-            assertEquals(OlcRtcCommand.desktopProviderArg(provider), command[command.indexOf("-provider") + 1])
+            assertEquals(OlcRtcCommand.desktopProviderArg(provider), command[command.indexOf("-carrier") + 1])
+            assertEquals(LocationConfig.DEFAULT_CLIENT_ID, command[command.indexOf("-client-id") + 1])
             assertContains(command, "room-$provider")
             assertContains(command, "10808")
         }
@@ -74,7 +75,7 @@ class DesktopProxyModeTest {
                 )
             ).args()
 
-            assertEquals("wbstream", command[command.indexOf("-provider") + 1])
+            assertEquals("wbstream", command[command.indexOf("-carrier") + 1])
         }
     }
 

@@ -191,6 +191,15 @@ jobs:
           path: olcrtc
           submodules: recursive
 
+      - name: Apply olcrtc Android check API patch
+        working-directory: olcrtc
+        run: |
+          if grep -q "func Check(" mobile/mobile.go; then
+            echo "olcrtc Mobile.Check API already exists"
+          else
+            git apply ../olcbox/sharedUI/olcrtc-patches/0001-mobile-check-api.patch
+          fi
+
       - name: Setup JDK
         uses: actions/setup-java@v4
         with:

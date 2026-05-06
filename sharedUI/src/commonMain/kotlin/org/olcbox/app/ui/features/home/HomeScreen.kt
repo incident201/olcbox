@@ -62,11 +62,24 @@ fun HomeScreen(
                 onImportFileClick = onImportFileRequested,
                 onImportClipboardClick = {
                     onImportFromClipboardRequested()
-                    scope.launch { snackbarHostState.showSnackbar("Импортировано из буфера") }
+                    scope.launch { snackbarHostState.showSnackbar("Imported from clipboard") }
                 },
                 onExportClipboardClick = {
                     onCopyConfigRequested()
-                    scope.launch { snackbarHostState.showSnackbar("Конфиг скопирован") }
+                    scope.launch { snackbarHostState.showSnackbar("Config copied") }
+                },
+                hasSubscriptions = locationViewModel.locations.any { !it.subscriptionUrl.isNullOrBlank() },
+                onRefreshSubscriptionsClick = {
+                    viewModel.refreshSubscriptions { updatedCount ->
+                        locationViewModel.loadLocations()
+                        viewModel.restartVpnIfRunning()
+                        val message = if (updatedCount > 0) {
+                            "Subscriptions updated: $updatedCount"
+                        } else {
+                            "No subscriptions to update"
+                        }
+                        scope.launch { snackbarHostState.showSnackbar(message) }
+                    }
                 }
             )
         }

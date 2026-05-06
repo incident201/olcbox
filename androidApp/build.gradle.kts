@@ -95,7 +95,7 @@ android {
     }
 }
 
-// В AGP 9.0+ настройки Kotlin для Android делаются так:
+// In AGP 9.0+ Kotlin settings for Android are configured like this:
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)

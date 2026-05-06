@@ -8,6 +8,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DropdownMenu
@@ -32,7 +33,9 @@ fun HomeScreenAppBar(
     onAppSettingsClick: () -> Unit = {},
     onImportFileClick: () -> Unit = {},
     onImportClipboardClick: () -> Unit = {},
-    onExportClipboardClick: () -> Unit = {}
+    onExportClipboardClick: () -> Unit = {},
+    onRefreshSubscriptionsClick: () -> Unit = {},
+    hasSubscriptions: Boolean = false
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -64,7 +67,7 @@ fun HomeScreenAppBar(
                 IconButton(onClick = onHistoryClick) {
                     Icon(
                         imageVector = Icons.Outlined.History,
-                        contentDescription = "История",
+                        contentDescription = "History",
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
@@ -75,7 +78,7 @@ fun HomeScreenAppBar(
                 IconButton(onClick = { showMenu = true }) {
                     Icon(
                         imageVector = Icons.Outlined.Add,
-                        contentDescription = "Меню конфигурации",
+                        contentDescription = "Configuration menu",
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
@@ -84,6 +87,17 @@ fun HomeScreenAppBar(
                     expanded = showMenu,
                     onDismissRequest = { showMenu = false }
                 ) {
+                    DropdownMenuItem(
+                        text = { Text("Update subscriptions") },
+                        onClick = {
+                            showMenu = false
+                            onRefreshSubscriptionsClick()
+                        },
+                        enabled = hasSubscriptions,
+                        leadingIcon = {
+                            Icon(Icons.Outlined.Refresh, contentDescription = null)
+                        }
+                    )
                     DropdownMenuItem(
                         text = { Text("Import from clipboard") },
                         onClick = {

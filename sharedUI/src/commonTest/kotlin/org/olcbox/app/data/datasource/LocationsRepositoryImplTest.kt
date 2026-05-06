@@ -145,6 +145,47 @@ class LocationsRepositoryImplTest {
     }
 
     @Test
+    fun importsOlcRtcUriWithClientIdAndMimoName() = runTest {
+        val source = FakeLocationsDataSource()
+        val input = "olcrtc://wbstream?seichannel@room-01#${"a".repeat(64)}%android-01${'$'}RU / olc free sub / IPv6"
+
+        LocationsRepositoryImpl(source).importText(input)
+
+        val imported = source.stored
+        assertNotNull(imported)
+        val location = imported.locations.single().location
+        assertEquals(LocationConfig.PROVIDER_WB_STREAM, location.bypassProvider)
+        assertEquals(LocationConfig.TRANSPORT_SEICHANNEL, location.transport)
+        assertEquals("room-01", location.id)
+        assertEquals("android-01", location.clientId)
+        assertEquals("RU / olc free sub / IPv6", location.name)
+    }
+
+    @Test
+    fun importsOlcRtcSubscriptionAndAppliesLocalNames() = runTest {
+        val source = FakeLocationsDataSource()
+        val input = """
+            #name: Test subscription
+            #refresh: 10m
+
+            olcrtc://wbstream?seichannel@room-01#${"a".repeat(64)}%android-01${'$'}RU / default name
+            ##name: RU-1
+            ##comment: primary
+
+            olcrtc://jazz?datachannel@room-02#${"b".repeat(64)}%android-02${'$'}DE / backup
+            ##name: DE-Backup
+        """.trimIndent()
+
+        LocationsRepositoryImpl(source).importText(input)
+
+        val imported = source.stored
+        assertNotNull(imported)
+        assertEquals(listOf("RU-1", "DE-Backup"), imported.locations.map { it.location.name })
+        assertEquals(listOf("android-01", "android-02"), imported.locations.map { it.location.clientId })
+        assertEquals("imported_ru-1", imported.activeLocationId)
+    }
+
+    @Test
     fun invalidLocationCannotBecomeActiveLocation() = runTest {
         val source = FakeLocationsDataSource()
         val incomplete = LocationConfig(name = "Broken", id = "room", key = "")

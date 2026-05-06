@@ -487,9 +487,11 @@ class OlcboxVpnService : VpnService() {
                 "Starting olcRTC provider=${config.bypassProvider}, " +
                     "transport=${config.transport}, room=${config.id}"
             )
-            Mobile.start(
+            Mobile.startWithTransport(
                 config.bypassProvider,
+                config.transport,
                 config.id,
+                config.clientId,
                 config.key,
                 socksPort.toLong(),
                 "",

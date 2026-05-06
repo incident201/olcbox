@@ -2,10 +2,12 @@ package org.olcbox.app.ui.features.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.olcbox.app.data.exporter.LogExporter
 import org.olcbox.app.data.importer.ConfigImporter
 import org.olcbox.app.data.model.LocationConfig
@@ -70,7 +72,12 @@ class HomeScreenViewModel(
             }
 
             val normalized = active.location
-            val locationItem = LocationItem(active.storageId, normalized.displayName(), normalized)
+            val locationItem = LocationItem(
+                storageId = active.storageId,
+                fullName = normalized.displayName(),
+                config = normalized,
+                subscriptionUrl = active.subscriptionUrl
+            )
 
             _state.update {
                 it.copy(
@@ -239,7 +246,9 @@ class HomeScreenViewModel(
         if (rawText.isBlank()) return
         viewModelScope.launch {
             try {
-                locationsRepository.importText(rawText)
+                withContext(Dispatchers.IO) {
+                    locationsRepository.importText(rawText)
+                }
                 loadCurrentConfig()
                 onComplete()
             } catch (e: Exception) {
@@ -250,6 +259,16 @@ class HomeScreenViewModel(
                     )
                 }
             }
+        }
+    }
+
+    fun refreshSubscriptions(
+        onComplete: (updatedCount: Int) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val updatedCount = locationsRepository.refreshSubscriptions()
+            loadCurrentConfig()
+            onComplete(updatedCount)
         }
     }
 

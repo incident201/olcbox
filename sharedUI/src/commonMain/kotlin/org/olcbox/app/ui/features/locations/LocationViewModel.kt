@@ -20,7 +20,8 @@ import org.olcbox.app.data.repository.LocationsRepository
 data class LocationItem(
     val storageId: String,
     val fullName: String,
-    val config: LocationConfig? = null
+    val config: LocationConfig? = null,
+    val subscriptionUrl: String? = null
 )
 
 sealed class PingsState {
@@ -61,11 +62,13 @@ class LocationViewModel(
     var keyError by mutableStateOf<String?>(null)
         private set
 
+    var clientIdError by mutableStateOf<String?>(null)
+        private set
 
     val isFormValid: Boolean
-        get() = nameError == null && serverError == null && keyError == null &&
+        get() = nameError == null && serverError == null && keyError == null && clientIdError == null &&
                 editingName.isNotBlank() && editingConfig.id.isNotBlank() &&
-                editingConfig.key.isNotBlank()
+                editingConfig.key.isNotBlank() && editingConfig.clientId.isNotBlank()
 
 
     init {
@@ -81,7 +84,14 @@ class LocationViewModel(
 
             savedConfigs.forEach { entry ->
                 val normalized = entry.location
-                locations.add(LocationItem(entry.storageId, normalized.displayName(), normalized))
+                locations.add(
+                    LocationItem(
+                        storageId = entry.storageId,
+                        fullName = normalized.displayName(),
+                        config = normalized,
+                        subscriptionUrl = entry.subscriptionUrl
+                    )
+                )
             }
 
             if (locations.isNotEmpty() && (currentSelectedId.isNullOrBlank() || locations.none { it.storageId == currentSelectedId })) {
@@ -155,6 +165,7 @@ class LocationViewModel(
         nameError = null
         serverError = null
         keyError = null
+        clientIdError = null
         isSaving = false
 
         if (id == null) {
@@ -185,6 +196,11 @@ class LocationViewModel(
     fun onPasswordChanged(value: String) {
         editingConfig = editingConfig.copy(key = value)
         validateKey(value)
+    }
+
+    fun onClientIdChanged(value: String) {
+        editingConfig = editingConfig.copy(clientId = value)
+        validateClientId(value)
     }
 
     fun onBypassProviderChanged(value: String) {
@@ -237,9 +253,19 @@ class LocationViewModel(
         }
     }
 
+    private fun validateClientId(clientId: String) {
+        clientIdError = when {
+            clientId.isBlank() -> "Client ID cannot be empty"
+            clientId.any { it.isWhitespace() } -> "Client ID cannot contain spaces"
+            clientId.length > 128 -> "Client ID is too long"
+            else -> null
+        }
+    }
+
     fun saveEditing(onComplete: () -> Unit) {
         validateName(editingName)
         validateServer(editingConfig.id)
+        validateClientId(editingConfig.clientId)
         validateKey(editingConfig.key)
 
         if (!isFormValid || isSaving) return

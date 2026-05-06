@@ -52,13 +52,13 @@ fun RelayStatus(
                         Icon(
                             tint = MaterialTheme.colorScheme.onPrimary,
                             imageVector = Icons.Rounded.VerifiedUser,
-                            contentDescription = "Активен"
+                            contentDescription = "Active"
                         )
                     } else {
                         Icon(
                             tint = MaterialTheme.colorScheme.onSurface,
                             imageVector = Icons.Outlined.Shield,
-                            contentDescription = "Неактивен"
+                            contentDescription = "Inactive"
                         )
                     }
                 }

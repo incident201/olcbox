@@ -9,6 +9,7 @@ interface LocationsRepository {
     suspend fun saveBundle(bundle: LocationBundleV4)
     suspend fun exportBundle(): String
     suspend fun importText(text: String)
+    suspend fun refreshSubscriptions(): Int
     suspend fun saveLocation(storageId: String, location: LocationConfig)
     suspend fun loadLocation(storageId: String): LocationConfig?
     suspend fun deleteLocation(storageId: String)

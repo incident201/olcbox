@@ -25,7 +25,9 @@ data class LocationConfig(
     @SerialName("vp8_fps")
     val vp8Fps: Int = DEFAULT_VP8_FPS,
     @SerialName("vp8_batch")
-    val vp8Batch: Int = DEFAULT_VP8_BATCH
+    val vp8Batch: Int = DEFAULT_VP8_BATCH,
+    @SerialName("client_id")
+    val clientId: String = DEFAULT_CLIENT_ID
 ) {
     fun normalized(): LocationConfig {
         val provider = normalizeProvider(bypassProvider)
@@ -34,6 +36,7 @@ data class LocationConfig(
             name = name.trim(),
             id = id.trim(),
             key = key.trim(),
+            clientId = clientId.trim().ifBlank { DEFAULT_CLIENT_ID },
             bypassProvider = provider,
             transport = normalizedTransport,
             vp8Fps = sanitizeVp8Fps(vp8Fps),
@@ -54,6 +57,8 @@ data class LocationConfig(
         const val PROVIDER_TELEMOST = "telemost"
         const val PROVIDER_WB_STREAM = "wbstream"
         const val DEFAULT_BYPASS_PROVIDER = PROVIDER_WB_STREAM
+
+        const val DEFAULT_CLIENT_ID = "olcbox"
 
         const val TRANSPORT_DATACHANNEL = "datachannel"
         const val TRANSPORT_VP8CHANNEL = "vp8channel"
@@ -227,6 +232,8 @@ object LocationTransportConfigSerializer : KSerializer<LocationTransportConfig> 
 data class LocationEndpointConfig(
     @SerialName("room_id")
     val roomId: String = "",
+    @SerialName("client_id")
+    val clientId: String = LocationConfig.DEFAULT_CLIENT_ID,
     val key: String = ""
 )
 
@@ -235,15 +242,23 @@ data class LocationEntry(
     @SerialName("storage_id")
     val storageId: String,
     val name: String = "",
+    @SerialName("subscription_url")
+    val subscriptionUrl: String? = null,
     val endpoint: LocationEndpointConfig? = null,
     val carrier: String? = null,
     val transport: LocationTransportConfig? = null,
+    @SerialName("subscriptionUrl")
+    val legacySubscriptionUrl: String? = null,
     @SerialName("id")
     val legacyId: String? = null,
     @SerialName("room_id")
     val legacyRoomId: String? = null,
     @SerialName("server")
     val legacyServer: String? = null,
+    @SerialName("client_id")
+    val legacyClientId: String? = null,
+    @SerialName("clientId")
+    val legacyClientIdCamel: String? = null,
     @SerialName("key")
     val legacyKey: String? = null,
     @SerialName("password")
@@ -276,6 +291,12 @@ data class LocationEntry(
             return LocationConfig(
                 name = name,
                 id = firstNotBlank(endpoint?.roomId, legacyId, legacyRoomId, legacyServer),
+                clientId = firstNotBlank(
+                    endpoint?.clientId,
+                    legacyClientId,
+                    legacyClientIdCamel,
+                    LocationConfig.DEFAULT_CLIENT_ID
+                ),
                 key = firstNotBlank(endpoint?.key, legacyKey, legacyPassword),
                 bypassProvider = provider,
                 transport = transportConfig.type,
@@ -298,8 +319,10 @@ data class LocationEntry(
         return LocationEntry(
             storageId = storageId.trim(),
             name = config.name,
+            subscriptionUrl = firstNotBlank(subscriptionUrl, legacySubscriptionUrl).ifBlank { null },
             endpoint = LocationEndpointConfig(
                 roomId = config.id,
+                clientId = config.clientId,
                 key = config.key
             ),
             carrier = config.bypassProvider,
@@ -308,13 +331,19 @@ data class LocationEntry(
     }
 
     companion object {
-        fun from(storageId: String, location: LocationConfig): LocationEntry {
+        fun from(
+            storageId: String,
+            location: LocationConfig,
+            subscriptionUrl: String? = null
+        ): LocationEntry {
             val config = location.normalized()
             return LocationEntry(
                 storageId = storageId,
                 name = config.name,
+                subscriptionUrl = subscriptionUrl,
                 endpoint = LocationEndpointConfig(
                     roomId = config.id,
+                    clientId = config.clientId,
                     key = config.key
                 ),
                 carrier = config.bypassProvider,
