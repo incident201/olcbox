@@ -9,12 +9,6 @@
 </p>
 
 <p>
-  <a href="#поддержать-проект">
-    <img src="https://img.shields.io/badge/Поддержать-iOS%20версию-blue?style=for-the-badge&logo=apple" alt="Поддержать iOS версию">
-  </a>
-</p>
-
-<p>
   Сбор на iOS-версию приложения: нужно оплатить Apple Developer Account за $100.
 </p>
 
@@ -147,25 +141,3 @@ Linux privilege override:
 OLCBOX_LINUX_PRIVILEGE=sudo ./gradlew :desktopApp:run
 OLCBOX_LINUX_PRIVILEGE=pkexec ./gradlew :desktopApp:run
 ```
-
-## Поддержать проект
-
-Сейчас я собираю деньги на iOS-версию Olcbox.
-
-Для публикации приложения на iOS нужно оплатить Apple Developer Account — это стоит **$99 в год**.
-
-Если хотите поддержать разработку, можно отправить пожертвование на карту:
-
-```text
-2200 7021 6458 2509
-```
-
-**Важно:** в комментарии к переводу обязательно напишите:
-
-```text
-Пожертвование
-```
-
-Если комментарий к переводу будет другим или пустым, деньги будут возвращены.
-
-Спасибо за поддержку проекта.
