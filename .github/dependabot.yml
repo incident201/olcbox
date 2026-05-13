@@ -1,20 +1,19 @@
 version: 2
 
-multi-ecosystem-groups:
-  dependencies:
-    schedule:
-      interval: "weekly"
-      day: "saturday"
-
 updates:
   - package-ecosystem: "gradle"
     directory: "/"
-    patterns:
-      - "*"
-    multi-ecosystem-group: "dependencies"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+    groups:
+      gradle-dependencies:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 1
 
   - package-ecosystem: "github-actions"
     directory: "/"
-    patterns:
-      - "*"
-    multi-ecosystem-group: "dependencies"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 1
