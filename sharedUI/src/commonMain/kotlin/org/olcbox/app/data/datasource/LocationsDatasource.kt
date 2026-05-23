@@ -40,16 +40,21 @@ interface LocationsDataSource {
     suspend fun saveDeviceIdentity(value: String) = Unit
 }
 
-internal expect fun createLocationsHttpClient(subscriptionProxy: SubscriptionFetchProxy? = null): HttpClient
+internal expect fun createProxyHttpClient(
+    subscriptionProxy: SubscriptionFetchProxy? = null,
+    connectTimeoutMs: Long = 3_000,
+    requestTimeoutMs: Long = 8_000,
+    socketTimeoutMs: Long = 8_000
+): HttpClient
 
-internal expect suspend fun <T> withSubscriptionProxyAuthentication(
+internal expect suspend fun <T> withProxyAuthentication(
     subscriptionProxy: SubscriptionFetchProxy?,
     block: suspend () -> T
 ): T
 
 class LocationsRepositoryImpl(
     private val dataSource: LocationsDataSource,
-    private val httpClient: HttpClient = createLocationsHttpClient(),
+    private val httpClient: HttpClient = createProxyHttpClient(),
     private val deviceIdentityProvider: DeviceIdentityProvider = PersistentDeviceIdentityProvider(dataSource),
     private val nowEpochMs: () -> Long = { kotlin.time.Clock.System.now().toEpochMilliseconds() }
 ) : LocationsRepository {
@@ -494,11 +499,11 @@ class LocationsRepositoryImpl(
         val client = if (subscriptionProxy == null) {
             httpClient
         } else {
-            createLocationsHttpClient(subscriptionProxy)
+            createProxyHttpClient(subscriptionProxy)
         }
 
         return try {
-            withSubscriptionProxyAuthentication(subscriptionProxy) {
+            withProxyAuthentication(subscriptionProxy) {
                 val response = runCatching {
                     client.get(url) {
                         headers {
@@ -518,16 +523,16 @@ class LocationsRepositoryImpl(
                             }
                         }
                     }
-                }.getOrNull() ?: return@withSubscriptionProxyAuthentication null
+                }.getOrNull() ?: return@withProxyAuthentication null
 
                 if (response.status.value !in 200..299) {
-                    return@withSubscriptionProxyAuthentication null
+                    return@withProxyAuthentication null
                 }
 
                 val content = runCatching {
                     response.bodyAsText()
                 }.getOrNull()?.takeIf { it.isNotBlank() }
-                    ?: return@withSubscriptionProxyAuthentication null
+                    ?: return@withProxyAuthentication null
 
                 DownloadedSubscription(
                     content = content,

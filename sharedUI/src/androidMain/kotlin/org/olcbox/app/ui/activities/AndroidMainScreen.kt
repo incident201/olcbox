@@ -92,8 +92,10 @@ fun AndroidMainScreen(
     val updateSettingsStore = remember(context) {
         AndroidUpdateSettingsStore(context)
     }
-    val updateInstaller = remember(context) {
-        AndroidUpdateInstaller(context)
+    val updateInstaller = remember(context, vpnManager) {
+        AndroidUpdateInstaller(context) {
+            vpnManager.subscriptionFetchProxy()
+        }
     }
     var updateSettings by remember { mutableStateOf(AppUpdateSettings()) }
     var updateStatusText by remember { mutableStateOf<String?>(null) }
@@ -180,7 +182,10 @@ fun AndroidMainScreen(
             if (!manual && !previousSettings.isUpdateCheckDue(checkStartedAt)) return@launch
 
             updateStatusText = "Checking ${previousSettings.channel.name.lowercase()}..."
-            val result = service.check(previousSettings.channel)
+            val result = service.check(
+                previousSettings.channel,
+                vpnManager.subscriptionFetchProxy()
+            )
             val checkedAt = kotlin.time.Clock.System.now().toEpochMilliseconds()
             val checkedSettings = previousSettings.copy(lastCheckAtEpochMs = checkedAt).normalized()
             saveUpdateSettings(checkedSettings)

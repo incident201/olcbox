@@ -10,7 +10,12 @@ import org.olcbox.app.data.repository.SubscriptionFetchProxy
 import java.net.Authenticator
 import java.net.PasswordAuthentication
 
-internal actual fun createLocationsHttpClient(subscriptionProxy: SubscriptionFetchProxy?): HttpClient {
+internal actual fun createProxyHttpClient(
+    subscriptionProxy: SubscriptionFetchProxy?,
+    connectTimeoutMs: Long,
+    requestTimeoutMs: Long,
+    socketTimeoutMs: Long
+): HttpClient {
     return HttpClient(OkHttp) {
         expectSuccess = false
 
@@ -21,14 +26,14 @@ internal actual fun createLocationsHttpClient(subscriptionProxy: SubscriptionFet
         }
 
         install(HttpTimeout) {
-            connectTimeoutMillis = 3_000
-            requestTimeoutMillis = 8_000
-            socketTimeoutMillis = 8_000
+            connectTimeoutMillis = connectTimeoutMs
+            requestTimeoutMillis = requestTimeoutMs
+            socketTimeoutMillis = socketTimeoutMs
         }
     }
 }
 
-internal actual suspend fun <T> withSubscriptionProxyAuthentication(
+internal actual suspend fun <T> withProxyAuthentication(
     subscriptionProxy: SubscriptionFetchProxy?,
     block: suspend () -> T
 ): T {
@@ -36,7 +41,7 @@ internal actual suspend fun <T> withSubscriptionProxyAuthentication(
         return block()
     }
 
-    return subscriptionProxyAuthenticatorMutex.withLock {
+    return proxyAuthenticatorMutex.withLock {
         val previous = Authenticator.getDefault()
         Authenticator.setDefault(subscriptionProxy.authenticator())
         try {
@@ -47,7 +52,7 @@ internal actual suspend fun <T> withSubscriptionProxyAuthentication(
     }
 }
 
-private val subscriptionProxyAuthenticatorMutex = Mutex()
+private val proxyAuthenticatorMutex = Mutex()
 
 private fun SubscriptionFetchProxy.authenticator(): Authenticator {
     val proxy = this

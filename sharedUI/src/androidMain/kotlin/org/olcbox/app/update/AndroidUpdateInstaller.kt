@@ -9,12 +9,17 @@ import android.net.Uri
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.olcbox.app.data.datasource.withProxyAuthentication
+import org.olcbox.app.data.repository.SubscriptionFetchProxy
 import java.io.File
 import java.net.HttpURLConnection
+import java.net.InetSocketAddress
+import java.net.Proxy
 import java.net.URL
 
 class AndroidUpdateInstaller(
-    context: Context
+    context: Context,
+    private val proxyProvider: () -> SubscriptionFetchProxy? = { null }
 ) {
     private val appContext = context.applicationContext
 
@@ -93,16 +98,29 @@ class AndroidUpdateInstaller(
     }
 
     suspend fun download(asset: AppUpdateAsset, onProgress: (Float) -> Unit): Result<File> = runCatching {
-        downloadFile(asset, onProgress)
+        val proxy = proxyProvider()
+        withProxyAuthentication(proxy) {
+            downloadFile(asset, onProgress, proxy)
+        }
     }
 
-    private suspend fun downloadFile(asset: AppUpdateAsset, onProgress: (Float) -> Unit): File = withContext(Dispatchers.IO) {
+    private suspend fun downloadFile(
+        asset: AppUpdateAsset,
+        onProgress: (Float) -> Unit,
+        proxy: SubscriptionFetchProxy?
+    ): File = withContext(Dispatchers.IO) {
         val directory = File(appContext.cacheDir, "updates").apply {
             mkdirs()
         }
         val fileName = asset.name.substringAfterLast('/').ifBlank { "olcbox-update.apk" }
         val target = File(directory, fileName)
-        val connection = URL(asset.downloadUrl).openConnection() as HttpURLConnection
+        val connection = if (proxy == null) {
+            URL(asset.downloadUrl).openConnection()
+        } else {
+            URL(asset.downloadUrl).openConnection(
+                Proxy(Proxy.Type.SOCKS, InetSocketAddress(proxy.host, proxy.port))
+            )
+        } as HttpURLConnection
         connection.connectTimeout = 10_000
         connection.readTimeout = 60_000
         val total = connection.contentLengthLong.takeIf { it > 0L } ?: asset.sizeBytes ?: -1L

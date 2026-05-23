@@ -1,7 +1,6 @@
 package org.olcbox.app.update
 
 import io.ktor.client.HttpClient
-import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
 import io.ktor.client.request.headers
 import io.ktor.client.statement.bodyAsText
@@ -10,7 +9,10 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.olcbox.app.CurrentAppInfo
+import org.olcbox.app.data.datasource.createProxyHttpClient
+import org.olcbox.app.data.datasource.withProxyAuthentication
 import org.olcbox.app.data.identity.DeviceIdentityProvider
+import org.olcbox.app.data.repository.SubscriptionFetchProxy
 
 @Serializable
 enum class ReleaseChannel {
@@ -58,8 +60,11 @@ class AppUpdateService(
     private val currentVersion: String = CurrentAppInfo.value.version,
     private val platform: UpdatePlatform = UpdatePlatform.current()
 ) {
-    suspend fun check(channel: ReleaseChannel): Result<AppUpdateInfo> = runCatching {
-        val release = fetchRelease(channel)
+    suspend fun check(
+        channel: ReleaseChannel,
+        proxy: SubscriptionFetchProxy? = null
+    ): Result<AppUpdateInfo> = runCatching {
+        val release = fetchRelease(channel, proxy)
         val asset = selectAsset(release.assets, platform)
             ?: error(
                 "No ${platform.assetToken.joinToString(" + ")} update asset in ${release.tagName}. " +
@@ -83,14 +88,35 @@ class AppUpdateService(
         )
     }
 
-    suspend fun fetchRelease(channel: ReleaseChannel): GithubRelease {
+    suspend fun fetchRelease(
+        channel: ReleaseChannel,
+        proxy: SubscriptionFetchProxy? = null
+    ): GithubRelease {
+        val client = if (proxy == null) {
+            httpClient
+        } else {
+            createUpdateHttpClient(proxy)
+        }
+
+        return try {
+            withProxyAuthentication(proxy) {
+                fetchRelease(client, channel)
+            }
+        } finally {
+            if (client !== httpClient) {
+                client.close()
+            }
+        }
+    }
+
+    private suspend fun fetchRelease(client: HttpClient, channel: ReleaseChannel): GithubRelease {
         val endpoint = when (channel) {
             ReleaseChannel.Stable -> "https://api.github.com/repos/${mirror.ownerRepo}/releases/latest"
             ReleaseChannel.Nightly -> "https://api.github.com/repos/${mirror.ownerRepo}/releases/tags/nightly"
         }
 
         val hwid = deviceIdentityProvider.hwid()
-        val response = httpClient.get(endpoint) {
+        val response = client.get(endpoint) {
             headers {
                 append(HttpHeaders.Accept, "application/vnd.github+json")
                 append(HttpHeaders.UserAgent, CurrentAppInfo.userAgent)
@@ -282,13 +308,10 @@ private val json = Json {
     ignoreUnknownKeys = true
 }
 
-private fun createUpdateHttpClient(): HttpClient {
-    return HttpClient {
-        expectSuccess = false
-        install(HttpTimeout) {
-            connectTimeoutMillis = 5_000
-            requestTimeoutMillis = 15_000
-            socketTimeoutMillis = 15_000
-        }
-    }
-}
+private fun createUpdateHttpClient(proxy: SubscriptionFetchProxy? = null): HttpClient =
+    createProxyHttpClient(
+        subscriptionProxy = proxy,
+        connectTimeoutMs = 5_000,
+        requestTimeoutMs = 15_000,
+        socketTimeoutMs = 15_000
+    )
