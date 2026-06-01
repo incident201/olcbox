@@ -63,6 +63,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -161,7 +162,6 @@ fun ApplicationSettingsSheet(
                 SharedSettingsRoute.Hub -> SharedSettingsHubContent(
                     updateSettings = updateSettings,
                     subscriptionsCount = subscriptions.size,
-                    connectionSummary = connectionSummary,
                     onConnectionClick = { route = SharedSettingsRoute.Connection },
                     onSubscriptionsClick = { route = SharedSettingsRoute.Subscriptions },
                     onUpdatesClick = { route = SharedSettingsRoute.Updates },
@@ -172,8 +172,13 @@ fun ApplicationSettingsSheet(
                     summary = connectionSummary,
                     details = connectionDetails,
                     socksProxySettings = socksProxySettings,
+                    onConnectionModeClick = { route = SharedSettingsRoute.ConnectionMode },
                     onSocksProxyClick = { route = SharedSettingsRoute.SocksProxy },
                     onBack = { route = SharedSettingsRoute.Hub }
+                )
+
+                SharedSettingsRoute.ConnectionMode -> SharedConnectionModeSettingsContent(
+                    onBack = { route = SharedSettingsRoute.Connection }
                 )
 
                 SharedSettingsRoute.SocksProxy -> if (socksProxySettings != null) {
@@ -198,12 +203,9 @@ fun ApplicationSettingsSheet(
                     settings = updateSettings,
                     statusText = updateStatusText,
                     downloadProgress = updateDownloadProgress,
-                    offer = updateOffer,
                     onBack = { route = SharedSettingsRoute.Hub },
                     onIntervalSelected = onUpdateIntervalSelected,
-                    onCheckUpdatesClick = onCheckUpdatesClick,
-                    onDownloadUpdateClick = onDownloadUpdateClick,
-                    onLaterUpdateClick = onLaterUpdateClick
+                    onCheckUpdatesClick = onCheckUpdatesClick
                 )
 
                 SharedSettingsRoute.Logs -> SharedLogsSettingsContent(
@@ -221,7 +223,6 @@ fun ApplicationSettingsSheet(
 private fun SharedSettingsHubContent(
     updateSettings: AppUpdateSettings,
     subscriptionsCount: Int,
-    connectionSummary: String,
     onConnectionClick: () -> Unit,
     onSubscriptionsClick: () -> Unit,
     onUpdatesClick: () -> Unit,
@@ -237,14 +238,14 @@ private fun SharedSettingsHubContent(
         SharedSettingsHeader(
             icon = Icons.Outlined.Settings,
             title = "Application Settings",
-            subtitle = connectionSummary
+            subtitle = "SOCKS"
         )
 
         Spacer(Modifier.height(8.dp))
 
         SharedNavigationRow(
             title = "Connection Settings",
-            value = connectionSummary,
+            value = "Mode and SOCKS5 proxy",
             icon = Icons.Rounded.Public,
             onClick = onConnectionClick
         )
@@ -290,6 +291,7 @@ private fun SharedConnectionSettingsContent(
     summary: String,
     details: List<Pair<String, String>>,
     socksProxySettings: ApplicationSocksProxySettings?,
+    onConnectionModeClick: () -> Unit,
     onSocksProxyClick: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -307,7 +309,14 @@ private fun SharedConnectionSettingsContent(
 
         Spacer(Modifier.height(20.dp))
 
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SharedNavigationRow(
+                title = "Connection Mode",
+                value = "Proxy · Local SOCKS5",
+                icon = Icons.Rounded.Public,
+                onClick = onConnectionModeClick
+            )
+
             if (socksProxySettings != null) {
                 SharedNavigationRow(
                     title = "SOCKS5 Proxy",
@@ -317,10 +326,39 @@ private fun SharedConnectionSettingsContent(
                 )
             }
 
-            details.forEach { (title, value) ->
-                SharedInfoRow(title = title, value = value)
-            }
+            details
+                .filterNot { (title, _) -> title.equals("Mode", ignoreCase = true) }
+                .forEach { (title, value) ->
+                    SharedInfoRow(title = title, value = value)
+                }
         }
+    }
+}
+
+@Composable
+private fun SharedConnectionModeSettingsContent(
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 32.dp)
+    ) {
+        SharedDetailHeader(
+            title = "Connection Mode",
+            subtitle = "Local SOCKS5 proxy",
+            onBack = onBack
+        )
+
+        Spacer(Modifier.height(20.dp))
+
+        SharedSelectableSettingsCard(
+            selected = true,
+            icon = Icons.Rounded.Public,
+            title = "Proxy",
+            subtitle = "Local SOCKS endpoint"
+        )
     }
 }
 
@@ -332,21 +370,28 @@ private fun SharedSocksProxySettingsContent(
     onProxySettingsSaved: (String, String, Int) -> Unit,
     onProxyPasswordRegenerated: () -> Unit
 ) {
+    var editedHost by remember(settings.host) { mutableStateOf(settings.host) }
     var editedPort by remember(settings.port) { mutableStateOf(settings.port.toString()) }
     var editedUsername by remember(settings.username) { mutableStateOf(settings.username) }
     var editedPassword by remember(settings.password) { mutableStateOf(settings.password) }
     val parsedPort = editedPort.toIntOrNull()
+    val hostValid = editedHost.isNotBlank()
     val portValid = parsedPort != null && ApplicationSocksProxySettings.isValidPort(parsedPort)
-    val settingsChanged = parsedPort != settings.port ||
-            editedUsername != settings.username ||
-            editedPassword != settings.password
-    val canSave = portValid && settingsChanged
+    val portChanged = parsedPort != null && parsedPort != settings.port
+    val usernameChanged = editedUsername != settings.username
+    val passwordChanged = editedPassword != settings.password
+    val settingsChanged = portChanged || usernameChanged || passwordChanged
+    val canSave = hostValid &&
+            portValid &&
+            editedUsername.isNotBlank() &&
+            editedPassword.isNotBlank() &&
+            settingsChanged
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp)
-            .padding(top = 16.dp, bottom = 32.dp)
+            .padding(bottom = 32.dp)
     ) {
         SharedDetailHeader(
             title = "SOCKS5 Proxy",
@@ -360,58 +405,86 @@ private fun SharedSocksProxySettingsContent(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            SharedSectionLabel("Endpoint")
-            SharedSocksProxyTextField(
-                value = editedPort,
-                onValueChange = { value ->
-                    editedPort = value.filter { it.isDigit() }.take(5)
-                },
-                label = "Port",
-                placeholder = ApplicationSocksProxySettings.DEFAULT_PORT.toString(),
-                isError = editedPort.isBlank() || !portValid,
-                leadingIcon = Icons.Rounded.Public,
-                supportingText = when {
-                    editedPort.isBlank() -> "Port is required"
-                    !portValid -> "Use ${ApplicationSocksProxySettings.MIN_PORT}-${ApplicationSocksProxySettings.MAX_PORT}"
-                    parsedPort != settings.port && isConnectionActive -> "Saving restarts the active connection"
-                    parsedPort != settings.port -> "Unsaved change"
-                    else -> null
-                },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Number,
-                    imeAction = ImeAction.Next
-                )
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SharedSectionLabel("Endpoint")
 
-            SharedSectionLabel("Credentials")
-            SharedSocksProxyTextField(
-                value = editedUsername,
-                onValueChange = { editedUsername = it.take(ApplicationSocksProxySettings.MAX_CREDENTIAL_LENGTH) },
-                label = "Username",
-                placeholder = "Optional username",
-                isError = false,
-                leadingIcon = Icons.Rounded.Person,
-                supportingText = when {
-                    editedUsername != settings.username && isConnectionActive -> "Saving restarts the active connection"
-                    editedUsername != settings.username -> "Unsaved change"
-                    else -> null
-                },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
-            )
-            SharedSocksProxyTextField(
-                value = editedPassword,
-                onValueChange = { editedPassword = it.take(ApplicationSocksProxySettings.MAX_CREDENTIAL_LENGTH) },
-                label = "Password",
-                placeholder = "Optional password",
-                isError = false,
-                leadingIcon = Icons.Rounded.Key,
-                supportingText = when {
-                    editedPassword != settings.password && isConnectionActive -> "Saving restarts the active connection"
-                    editedPassword != settings.password -> "Unsaved change"
-                    else -> null
-                },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
-            )
+                SharedSocksProxyTextField(
+                    value = editedHost,
+                    onValueChange = { value ->
+                        editedHost = value
+                            .replace("\r", "")
+                            .replace("\n", "")
+                            .trim()
+                    },
+                    label = "Listen address",
+                    placeholder = "127.0.0.1",
+                    enabled = false,
+                    isError = !hostValid,
+                    leadingIcon = Icons.Rounded.Public,
+                    supportingText = if (!hostValid) "Listen address is required" else null,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+                )
+
+                SharedSocksProxyTextField(
+                    value = editedPort,
+                    onValueChange = { value ->
+                        editedPort = value.filter { it.isDigit() }.take(5)
+                    },
+                    label = "Port",
+                    placeholder = ApplicationSocksProxySettings.DEFAULT_PORT.toString(),
+                    enabled = true,
+                    isError = editedPort.isBlank() || !portValid,
+                    leadingIcon = Icons.Rounded.Public,
+                    supportingText = when {
+                        editedPort.isBlank() -> "Port is required"
+                        !portValid -> "Use ${ApplicationSocksProxySettings.MIN_PORT}-${ApplicationSocksProxySettings.MAX_PORT}"
+                        portChanged && isConnectionActive -> "Saving restarts the active connection"
+                        portChanged -> "Unsaved change"
+                        else -> null
+                    },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Next
+                    )
+                )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SharedSectionLabel("Credentials")
+
+                SharedSocksProxyTextField(
+                    value = editedUsername,
+                    onValueChange = { editedUsername = it.take(ApplicationSocksProxySettings.MAX_CREDENTIAL_LENGTH) },
+                    label = "Username",
+                    placeholder = "olcbox...",
+                    enabled = true,
+                    isError = editedUsername.isBlank(),
+                    leadingIcon = Icons.Rounded.Person,
+                    supportingText = when {
+                        editedUsername.isBlank() -> "Username is required"
+                        usernameChanged && isConnectionActive -> "Saving restarts the active connection"
+                        usernameChanged -> "Unsaved change"
+                        else -> null
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+                )
+                SharedSocksProxyTextField(
+                    value = editedPassword,
+                    onValueChange = { editedPassword = it.take(ApplicationSocksProxySettings.MAX_CREDENTIAL_LENGTH) },
+                    label = "Password",
+                    placeholder = "Generated password",
+                    enabled = true,
+                    isError = editedPassword.isBlank(),
+                    leadingIcon = Icons.Rounded.Key,
+                    supportingText = when {
+                        editedPassword.isBlank() -> "Password is required"
+                        passwordChanged && isConnectionActive -> "Saving restarts the active connection"
+                        passwordChanged -> "Unsaved change"
+                        else -> null
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
+                )
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -447,6 +520,7 @@ private fun SharedSocksProxyTextField(
     onValueChange: (String) -> Unit,
     label: String,
     placeholder: String,
+    enabled: Boolean,
     isError: Boolean,
     leadingIcon: ImageVector,
     supportingText: String?,
@@ -456,6 +530,7 @@ private fun SharedSocksProxyTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = Modifier.fillMaxWidth(),
+        enabled = enabled,
         label = { Text(label) },
         placeholder = { Text(placeholder) },
         singleLine = true,
@@ -472,17 +547,14 @@ private fun SharedUpdatesSettingsContent(
     settings: AppUpdateSettings,
     statusText: String?,
     downloadProgress: Float?,
-    offer: AppUpdateInfo?,
     onBack: () -> Unit,
     onIntervalSelected: (Int) -> Unit,
-    onCheckUpdatesClick: () -> Unit,
-    onDownloadUpdateClick: (AppUpdateInfo) -> Unit,
-    onLaterUpdateClick: (AppUpdateInfo) -> Unit
+    onCheckUpdatesClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = 560.dp)
+            .heightIn(max = 520.dp)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp)
             .padding(top = 16.dp, bottom = 12.dp)
@@ -492,15 +564,6 @@ private fun SharedUpdatesSettingsContent(
             subtitle = "Current version ${CurrentAppInfo.value.version}",
             onBack = onBack
         )
-
-        if (offer != null) {
-            Spacer(Modifier.height(16.dp))
-            SharedUpdateOfferCard(
-                offer = offer,
-                onDownload = { onDownloadUpdateClick(offer) },
-                onLater = { onLaterUpdateClick(offer) }
-            )
-        }
 
         Spacer(Modifier.height(18.dp))
 
@@ -535,7 +598,7 @@ private fun SharedUpdatesSettingsContent(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = settings.lastCheckAtEpochMs?.let { "Checked ${it.formatEpochMs()}" } ?: "Not checked yet",
+                    text = settings.lastCheckAtEpochMs?.formatEpochMs() ?: "Not checked yet",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -779,35 +842,35 @@ private fun SharedNavigationRow(
     title: String,
     value: String,
     icon: ImageVector,
+    enabled: Boolean = true,
     showChevron: Boolean = true,
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(72.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(enabled = enabled, onClick = onClick),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        onClick = onClick
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+            modifier = Modifier.padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(40.dp),
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.secondaryContainer
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.padding(10.dp)
+                )
             }
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -815,13 +878,15 @@ private fun SharedNavigationRow(
                     text = title,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = value,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 13.sp,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -829,7 +894,8 @@ private fun SharedNavigationRow(
                 Icon(
                     imageVector = Icons.Rounded.ChevronRight,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }
@@ -867,6 +933,85 @@ private fun SharedInfoRow(
 }
 
 @Composable
+private fun SharedSelectableSettingsCard(
+    selected: Boolean,
+    icon: ImageVector,
+    title: String,
+    subtitle: String
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(82.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainer
+        },
+        border = BorderStroke(
+            1.dp,
+            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier.size(40.dp),
+                shape = CircleShape,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                },
+                contentColor = if (selected) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.padding(10.dp)
+                )
+            }
+
+            Spacer(Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = subtitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun SharedSettingsHeader(
     icon: ImageVector,
     title: String,
@@ -877,31 +1022,28 @@ private fun SharedSettingsHeader(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Surface(
-            modifier = Modifier.size(44.dp),
+            modifier = Modifier.size(46.dp),
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.primaryContainer
+            color = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.padding(11.dp)
+            )
         }
         Spacer(Modifier.width(14.dp))
         Column {
             Text(
                 text = title,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.SemiBold
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface
             )
             Text(
                 text = subtitle,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 13.sp
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -915,28 +1057,38 @@ private fun SharedDetailHeader(
     modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onBack) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                contentDescription = "Back"
-            )
+        Surface(
+            modifier = Modifier.size(46.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                    contentDescription = "Back"
+                )
+            }
         }
-        Spacer(Modifier.width(8.dp))
+
+        Spacer(Modifier.width(14.dp))
+
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
+                style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.SemiBold
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 13.sp,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
         }
@@ -947,7 +1099,7 @@ private fun SharedDetailHeader(
 private fun SharedSectionLabel(text: String) {
     Text(
         text = text,
-        modifier = Modifier.padding(start = 2.dp, top = 2.dp),
+        modifier = Modifier.padding(start = 2.dp),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         fontSize = 12.sp,
         fontWeight = FontWeight.SemiBold
@@ -960,21 +1112,24 @@ private fun SharedEmptyState(
     subtitle: String
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(128.dp),
+        shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.Center
         ) {
             Text(
                 text = title,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 15.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold
             )
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = subtitle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -987,6 +1142,7 @@ private fun SharedEmptyState(
 private enum class SharedSettingsRoute {
     Hub,
     Connection,
+    ConnectionMode,
     Subscriptions,
     Updates,
     Logs,

@@ -1,6 +1,6 @@
 val olcrtcRepoPath = providers.environmentVariable("OLCRTC_REPO")
     .orElse(rootProject.layout.projectDirectory.asFile.parentFile.resolve("olcrtc").absolutePath)
-val olcrtcRepoDir = file(olcrtcRepoPath.get())
+val olcrtcRepoDir = rootProject.file(olcrtcRepoPath.get())
 val olcrtcAndroidAarFile = layout.buildDirectory.file("olcrtc.aar").get().asFile
 
 val gomobileExecutable = providers.environmentVariable("GOMOBILE_PATH")

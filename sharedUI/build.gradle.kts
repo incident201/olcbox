@@ -89,7 +89,7 @@ val buildOlcrtcIosXcframework by tasks.registering(Exec::class) {
 kotlin {
     android {
         namespace = "org.olcbox.app.sharedui"
-        compileSdk = 36
+        compileSdk = 37
         minSdk = 23
 
         compilerOptions {
