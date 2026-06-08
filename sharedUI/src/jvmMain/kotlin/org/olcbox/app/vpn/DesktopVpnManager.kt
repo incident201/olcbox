@@ -29,6 +29,7 @@ import org.olcbox.app.vpn.desktop.LinuxTunController
 import org.olcbox.app.vpn.desktop.OlcRtcCommand
 import org.olcbox.app.vpn.desktop.PacServer
 import org.olcbox.app.vpn.desktop.WindowsTunController
+import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.charset.StandardCharsets
@@ -66,6 +67,8 @@ class DesktopVpnManager private constructor(
     private var operationJob: Job? = null
     private var logJob: Job? = null
     private var tunLogJob: Job? = null
+    private var processWatchJob: Job? = null
+    private var tunProcessWatchJob: Job? = null
     private var process: Process? = null
     private var tunProcess: Process? = null
     private var olcRtcConfigPath: Path? = null
@@ -209,8 +212,9 @@ class DesktopVpnManager private constructor(
                 privileged = desktopMode == DesktopMode.LinuxTun
             )
 
+            val olcRtcProcess = process ?: error("olcRTC process is missing")
             waitForOlcRtcReady(
-                process = process ?: error("olcRTC process is missing"),
+                process = olcRtcProcess,
                 ready = ready,
                 startupFailure = startupFailure,
                 socksPort = socksSettings.port,
@@ -227,6 +231,17 @@ class DesktopVpnManager private constructor(
                 DesktopMode.SystemProxy -> startSystemProxy(socksSettings, requestGeneration)
             }
 
+            if (!olcRtcProcess.isAlive) {
+                error("olcRTC exited before desktop proxy was enabled")
+            }
+
+            startProcessExitWatchers(
+                desktopMode = desktopMode,
+                olcRtcProcess = olcRtcProcess,
+                currentTunProcess = tunProcess,
+                requestGeneration = requestGeneration
+            )
+
             setStatus(VpnStatus.Connected)
             addLog(
                 when (desktopMode) {
@@ -242,37 +257,7 @@ class DesktopVpnManager private constructor(
                 addLog("Desktop start failed: ${e.message}")
             }
 
-            when (DesktopPaths.os) {
-                DesktopOs.Linux -> {
-                    runCatching {
-                        linuxTunController.stop(tunProcess)
-                    }.onFailure {
-                        addLog("Linux TUN cleanup failed: ${it.message}")
-                    }
-                    tunProcess = null
-                }
-                DesktopOs.Windows -> {
-                    runCatching {
-                        windowsTunController.stop(tunProcess)
-                    }.onFailure {
-                        addLog("Windows TUN cleanup failed: ${it.message}")
-                    }
-                    tunProcess = null
-                }
-                DesktopOs.MacOS,
-                DesktopOs.Other -> {
-                    runCatching {
-                        proxyController.restore()
-                    }.onFailure {
-                        addLog("Proxy restore failed: ${it.message}")
-                    }
-                }
-            }
-
-            pacServer.stop()
-            stopProcess(process)
-            process = null
-            deleteOlcRtcConfig()
+            stopDesktopMode(finalStatus = false)
 
             if (e !is CancellationException && requestGeneration == generation) {
                 setStatus(VpnStatus.Error(e.message ?: "Desktop start failed"))
@@ -372,10 +357,12 @@ class DesktopVpnManager private constructor(
 
     private suspend fun stopDesktopMode(finalStatus: Boolean) {
         if (_status.value is VpnStatus.Disconnected && process == null && tunProcess == null) {
+            cancelProcessJobs()
             return
         }
 
         setStatus(VpnStatus.Stopping)
+        cancelProcessJobs()
 
         when (DesktopPaths.os) {
             DesktopOs.Linux -> {
@@ -410,12 +397,6 @@ class DesktopVpnManager private constructor(
         process = null
         deleteOlcRtcConfig()
 
-        logJob?.cancel()
-        logJob = null
-
-        tunLogJob?.cancel()
-        tunLogJob = null
-
         if (finalStatus) {
             setStatus(VpnStatus.Disconnected)
             addLog(
@@ -427,6 +408,20 @@ class DesktopVpnManager private constructor(
                 }
             )
         }
+    }
+
+    private fun cancelProcessJobs() {
+        processWatchJob?.cancel()
+        processWatchJob = null
+
+        tunProcessWatchJob?.cancel()
+        tunProcessWatchJob = null
+
+        logJob?.cancel()
+        logJob = null
+
+        tunLogJob?.cancel()
+        tunLogJob = null
     }
 
     private fun startOlcRtcProcess(
@@ -477,22 +472,26 @@ class DesktopVpnManager private constructor(
         }
 
         val readerJob = scope.launch {
-            startedProcess.inputStream.bufferedReader().useLines { lines ->
-                lines.forEach { line ->
-                    if (!isActive) return@forEach
+            try {
+                startedProcess.inputStream.bufferedReader().useLines { lines ->
+                    for (line in lines) {
+                        if (!isActive) break
 
-                    if (logOutput) {
-                        addLog("rtc: $line")
-                    }
+                        if (logOutput) {
+                            addLog("rtc: $line")
+                        }
 
-                    if (line.contains("SOCKS5 server listening", ignoreCase = true)) {
-                        ready.complete(Unit)
-                    }
+                        if (line.contains("SOCKS5 server listening", ignoreCase = true)) {
+                            ready.complete(Unit)
+                        }
 
-                    if (isFatalOlcRtcStartupLine(line)) {
-                        startupFailure.complete(line)
+                        if (isFatalOlcRtcStartupLine(line)) {
+                            startupFailure.complete(line)
+                        }
                     }
                 }
+            } catch (_: IOException) {
+                // Process stdout may close while stopping or after a remote disconnect.
             }
         }
 
@@ -525,13 +524,100 @@ class DesktopVpnManager private constructor(
         tunLogJob?.cancel()
 
         tunLogJob = scope.launch {
-            target.inputStream.bufferedReader().useLines { lines ->
-                lines.forEach { line ->
-                    if (!isActive) return@forEach
+            try {
+                target.inputStream.bufferedReader().useLines { lines ->
+                    for (line in lines) {
+                        if (!isActive) break
 
-                    addLog("tun: $line")
+                        addLog("tun: $line")
+                    }
+                }
+            } catch (_: IOException) {
+                // TUN stdout may close while the process is being stopped.
+            }
+        }
+    }
+
+    private fun startProcessExitWatchers(
+        desktopMode: DesktopMode,
+        olcRtcProcess: Process,
+        currentTunProcess: Process?,
+        requestGeneration: Long
+    ) {
+        startOlcRtcExitWatcher(olcRtcProcess, requestGeneration)
+
+        when (desktopMode) {
+            DesktopMode.LinuxTun,
+            DesktopMode.WindowsTun -> startTunExitWatcher(
+                currentTunProcess ?: error("TUN process is missing"),
+                requestGeneration
+            )
+            DesktopMode.SystemProxy -> {
+                tunProcessWatchJob?.cancel()
+                tunProcessWatchJob = null
+            }
+        }
+    }
+
+    private fun startOlcRtcExitWatcher(target: Process, requestGeneration: Long) {
+        processWatchJob?.cancel()
+        processWatchJob = scope.launch {
+            val exitCode = waitForProcessExit(target) ?: return@launch
+            if (!isActive) return@launch
+
+            scope.launch {
+                mutex.withLock {
+                    if (requestGeneration != generation || process !== target) return@withLock
+
+                    handleUnexpectedProcessExit(
+                        logMessage = "olcRTC process exited unexpectedly with code $exitCode",
+                        errorMessage = "olcRTC exited unexpectedly (code $exitCode)",
+                        requestGeneration = requestGeneration
+                    )
                 }
             }
+        }
+    }
+
+    private fun startTunExitWatcher(target: Process, requestGeneration: Long) {
+        tunProcessWatchJob?.cancel()
+        tunProcessWatchJob = scope.launch {
+            val exitCode = waitForProcessExit(target) ?: return@launch
+            if (!isActive) return@launch
+
+            scope.launch {
+                mutex.withLock {
+                    if (requestGeneration != generation || tunProcess !== target) return@withLock
+
+                    handleUnexpectedProcessExit(
+                        logMessage = "TUN process exited unexpectedly with code $exitCode",
+                        errorMessage = "TUN process exited unexpectedly (code $exitCode)",
+                        requestGeneration = requestGeneration
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun handleUnexpectedProcessExit(
+        logMessage: String,
+        errorMessage: String,
+        requestGeneration: Long
+    ) {
+        addLog(logMessage)
+        stopDesktopMode(finalStatus = false)
+
+        if (requestGeneration == generation) {
+            setStatus(VpnStatus.Error(errorMessage))
+        }
+    }
+
+    private fun waitForProcessExit(target: Process): Int? {
+        return try {
+            target.waitFor()
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            null
         }
     }
 
