@@ -50,7 +50,7 @@ jobs:
 
       - name: Install Android SDK packages
         run: |
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;${ANDROID_NDK_VERSION}"
+          sdkmanager "platforms;android-37" "build-tools;37.0.0" "ndk;${ANDROID_NDK_VERSION}"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -74,7 +74,7 @@ jobs:
           export OLCRTC_REPO="${{ github.workspace }}/olcrtc"
           export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}"
           export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
-          ./gradlew :androidApp:assembleDebug --stacktrace
+          ./gradlew :androidApp:assembleDebug --stacktrace --no-configuration-cache
 
       - name: Prepare debug APK artifact
         working-directory: olcbox
