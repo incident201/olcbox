@@ -1,24 +1,23 @@
-name: PR Checks
+name: Build Android Debug APK
 
 on:
+  workflow_dispatch:
+  push:
+    branches: [ main, universal-carrier ]
   pull_request:
-    branches:
-      - main
+    branches: [ main ]
 
 permissions:
   contents: read
 
-concurrency:
-  group: pr-checks-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+env:
+  ANDROID_NDK_VERSION: "28.2.13676358"
+  OLCBOX_OLCRTC_REF: "master"
 
 jobs:
-  checks:
-    name: Gradle checks
+  build-android-debug-apk:
+    name: Build Android debug APK
     runs-on: ubuntu-latest
-
-    env:
-      ANDROID_NDK_VERSION: "28.2.13676358"
 
     steps:
       - name: Checkout olcbox
@@ -29,8 +28,8 @@ jobs:
       - name: Checkout olcrtc
         uses: actions/checkout@v6
         with:
-          repository: alananisimov/olcrtc
-          ref: master
+          repository: openlibrecommunity/olcrtc
+          ref: ${{ env.OLCBOX_OLCRTC_REF }}
           path: olcrtc
           submodules: recursive
 
@@ -51,7 +50,10 @@ jobs:
 
       - name: Install Android SDK packages
         run: |
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;${ANDROID_NDK_VERSION}"
+          sdkmanager "platforms;android-37.0" "build-tools;36.0.0" "ndk;${ANDROID_NDK_VERSION}"
+          if [ -d "${ANDROID_HOME}/platforms/android-37.0" ] && [ ! -e "${ANDROID_HOME}/platforms/android-37" ]; then
+            ln -s "${ANDROID_HOME}/platforms/android-37.0" "${ANDROID_HOME}/platforms/android-37"
+          fi
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -69,10 +71,27 @@ jobs:
           export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
           gomobile init
 
-      - name: Run checks
+      - name: Build debug APK
         working-directory: olcbox
         run: |
           export OLCRTC_REPO="${{ github.workspace }}/olcrtc"
           export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}"
           export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
-          ./gradlew :sharedUI:jvmTest :desktopApp:compileKotlin :androidApp:assembleDebug --stacktrace
+          ./gradlew :androidApp:assembleDebug --stacktrace --no-configuration-cache
+
+      - name: Prepare debug APK artifact
+        working-directory: olcbox
+        run: |
+          mkdir -p dist
+          debug_apk="$(find androidApp/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | sort | head -n 1)"
+          if [ -z "${debug_apk}" ]; then
+            echo "Android debug APK was not found" >&2
+            exit 1
+          fi
+          cp "${debug_apk}" "dist/Olcbox-android-debug.apk"
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Olcbox-android-debug-apk
+          path: olcbox/dist/Olcbox-android-debug.apk
