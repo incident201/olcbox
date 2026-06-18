@@ -28,7 +28,7 @@ jobs:
       - name: Checkout olcrtc
         uses: actions/checkout@v6
         with:
-          repository: openlibrecommunity/olcrtc
+          repository: incident201/olcrtc
           ref: ${{ env.OLCBOX_OLCRTC_REF }}
           path: olcrtc
           submodules: recursive
