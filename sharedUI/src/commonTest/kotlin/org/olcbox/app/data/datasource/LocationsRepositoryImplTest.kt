@@ -11,6 +11,7 @@ import org.olcbox.app.data.identity.DeviceIdentityProvider
 import org.olcbox.app.data.model.LocationBundleV4
 import org.olcbox.app.data.model.LocationConfig
 import org.olcbox.app.data.model.LocationEntry
+import org.olcbox.app.data.model.LocationTransportConfig
 import org.olcbox.app.data.share.ConfigShareService
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -370,7 +371,7 @@ class LocationsRepositoryImplTest {
     }
 
     @Test
-    fun importsUnsupportedVideochannelAsDefaultTransport() = runTest {
+    fun importsTelemostVideochannelAsVideochannelTransport() = runTest {
         val source = FakeLocationsDataSource()
         val input = """
             {
@@ -400,7 +401,7 @@ class LocationsRepositoryImplTest {
         val location = imported.locations.first().location
         assertEquals(5, imported.version)
         assertEquals(LocationConfig.PROVIDER_TELEMOST, location.bypassProvider)
-        assertEquals(LocationConfig.TRANSPORT_VP8CHANNEL, location.transport)
+        assertEquals(LocationConfig.TRANSPORT_VIDEOCHANNEL, location.transport)
     }
 
     @Test
@@ -408,7 +409,8 @@ class LocationsRepositoryImplTest {
         assertEquals(
             listOf(
                 LocationConfig.TRANSPORT_VP8CHANNEL,
-                LocationConfig.TRANSPORT_SEICHANNEL
+                LocationConfig.TRANSPORT_SEICHANNEL,
+                LocationConfig.TRANSPORT_VIDEOCHANNEL
             ),
             LocationConfig.supportedTransportsForProvider(LocationConfig.PROVIDER_TELEMOST)
         )
@@ -421,17 +423,51 @@ class LocationsRepositoryImplTest {
             LocationConfig.supportedTransportsForProvider(LocationConfig.PROVIDER_JAZZ)
         )
         assertEquals(
-            LocationConfig.supportedTransportsForProvider(LocationConfig.PROVIDER_JAZZ),
+            listOf(
+                LocationConfig.TRANSPORT_DATACHANNEL,
+                LocationConfig.TRANSPORT_VP8CHANNEL,
+                LocationConfig.TRANSPORT_SEICHANNEL,
+                LocationConfig.TRANSPORT_VIDEOCHANNEL
+            ),
             LocationConfig.supportedTransportsForProvider(LocationConfig.PROVIDER_WB_STREAM)
         )
         assertEquals(
-            listOf(LocationConfig.TRANSPORT_DATACHANNEL),
+            listOf(
+                LocationConfig.TRANSPORT_DATACHANNEL,
+                LocationConfig.TRANSPORT_VIDEOCHANNEL
+            ),
             LocationConfig.supportedTransportsForProvider(LocationConfig.PROVIDER_JITSI)
         )
         assertEquals(
             LocationConfig.TRANSPORT_DATACHANNEL,
             LocationConfig.normalizeTransport(LocationConfig.TRANSPORT_VP8CHANNEL, LocationConfig.PROVIDER_JITSI)
         )
+        assertEquals(
+            LocationConfig.TRANSPORT_VIDEOCHANNEL,
+            LocationConfig.normalizeTransport("videochannel", LocationConfig.PROVIDER_WB_STREAM)
+        )
+        assertEquals(
+            LocationConfig.TRANSPORT_VIDEOCHANNEL,
+            LocationConfig.normalizeTransport("video", LocationConfig.PROVIDER_WB_STREAM)
+        )
+        assertEquals(
+            LocationConfig.TRANSPORT_VIDEOCHANNEL,
+            LocationConfig.normalizeTransport("videochannel", LocationConfig.PROVIDER_JITSI)
+        )
+        assertEquals(
+            LocationConfig.TRANSPORT_DATACHANNEL,
+            LocationConfig.normalizeTransport("videochannel", LocationConfig.PROVIDER_JAZZ)
+        )
+    }
+
+    @Test
+    fun videochannelTransportConfigDoesNotCreateVp8Options() {
+        val transport = LocationTransportConfig.from(
+            LocationConfig(transport = LocationConfig.TRANSPORT_VIDEOCHANNEL)
+        )
+
+        assertEquals(LocationConfig.TRANSPORT_VIDEOCHANNEL, transport.type)
+        assertNull(transport.vp8)
     }
 
     @Test
@@ -660,6 +696,38 @@ class LocationsRepositoryImplTest {
         assertNotNull(imported)
         assertEquals(48, imported.locations.single().location.vp8Fps)
         assertEquals(32, imported.locations.single().location.vp8Batch)
+    }
+
+    @Test
+    fun videochannelLocationRoundTripsThroughStorageAndSharing() = runTest {
+        val source = FakeLocationsDataSource()
+        val config = LocationConfig(
+            name = "Video",
+            id = "room-video",
+            key = "e".repeat(64),
+            bypassProvider = LocationConfig.PROVIDER_WB_STREAM,
+            transport = LocationConfig.TRANSPORT_VIDEOCHANNEL
+        )
+
+        LocationsRepositoryImpl(source).saveLocation("video", config)
+
+        val saved = source.stored
+        assertNotNull(saved)
+        val savedEntry = saved.locations.single()
+        assertEquals(LocationConfig.TRANSPORT_VIDEOCHANNEL, savedEntry.transport?.type)
+        assertNull(savedEntry.transport?.vp8)
+        assertEquals(LocationConfig.TRANSPORT_VIDEOCHANNEL, savedEntry.location.transport)
+
+        val loaded = LocationsRepositoryImpl(source).getBundle().locations.single().location
+        assertEquals(LocationConfig.TRANSPORT_VIDEOCHANNEL, loaded.transport)
+
+        val shared = ConfigShareService.olcRtcUri(savedEntry)
+        val importedSource = FakeLocationsDataSource()
+        LocationsRepositoryImpl(importedSource).importText(shared)
+
+        val imported = importedSource.stored
+        assertNotNull(imported)
+        assertEquals(LocationConfig.TRANSPORT_VIDEOCHANNEL, imported.locations.single().location.transport)
     }
 
     @Test
