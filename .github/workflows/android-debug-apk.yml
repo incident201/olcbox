@@ -79,7 +79,17 @@ jobs:
           export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
           ./gradlew :androidApp:assembleDebug --stacktrace --no-configuration-cache
 
-      - name: Prepare debug APK artifact
+      - name: Build olcrtc Linux amd64
+        working-directory: olcrtc
+        run: |
+          mkdir -p "${{ github.workspace }}/olcbox/dist"
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build \
+            -trimpath \
+            -ldflags "-s -w" \
+            -o "${{ github.workspace }}/olcbox/dist/olcrtc-linux-amd64" \
+            ./cmd/olcrtc
+
+      - name: Prepare debug artifacts
         working-directory: olcbox
         run: |
           mkdir -p dist
@@ -89,9 +99,12 @@ jobs:
             exit 1
           fi
           cp "${debug_apk}" "dist/Olcbox-android-debug.apk"
+          test -f "dist/olcrtc-linux-amd64"
 
-      - name: Upload debug APK artifact
+      - name: Upload debug artifacts
         uses: actions/upload-artifact@v7
         with:
           name: Olcbox-android-debug-apk
-          path: olcbox/dist/Olcbox-android-debug.apk
+          path: |
+            olcbox/dist/Olcbox-android-debug.apk
+            olcbox/dist/olcrtc-linux-amd64

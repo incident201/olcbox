@@ -59,6 +59,7 @@ data class LocationConfig(
         const val TRANSPORT_DATACHANNEL = "datachannel"
         const val TRANSPORT_VP8CHANNEL = "vp8channel"
         const val TRANSPORT_SEICHANNEL = "seichannel"
+        const val TRANSPORT_VIDEOCHANNEL = "videochannel"
         const val DEFAULT_TRANSPORT = TRANSPORT_VP8CHANNEL
 
         const val DEFAULT_VP8_FPS = 60
@@ -74,13 +75,36 @@ data class LocationConfig(
         val supportedTransports = listOf(
             TRANSPORT_DATACHANNEL,
             TRANSPORT_VP8CHANNEL,
-            TRANSPORT_SEICHANNEL
+            TRANSPORT_SEICHANNEL,
+            TRANSPORT_VIDEOCHANNEL
         )
 
         fun supportedTransportsForProvider(provider: String): List<String> {
             return when (normalizeProvider(provider)) {
-                PROVIDER_TELEMOST -> listOf(TRANSPORT_VP8CHANNEL, TRANSPORT_SEICHANNEL)
-                PROVIDER_JITSI -> listOf(TRANSPORT_DATACHANNEL)
+                PROVIDER_TELEMOST -> listOf(
+                    TRANSPORT_VP8CHANNEL,
+                    TRANSPORT_SEICHANNEL,
+                    TRANSPORT_VIDEOCHANNEL
+                )
+
+                PROVIDER_WB_STREAM -> listOf(
+                    TRANSPORT_DATACHANNEL,
+                    TRANSPORT_VP8CHANNEL,
+                    TRANSPORT_SEICHANNEL,
+                    TRANSPORT_VIDEOCHANNEL
+                )
+
+                PROVIDER_JITSI -> listOf(
+                    TRANSPORT_DATACHANNEL,
+                    TRANSPORT_VIDEOCHANNEL
+                )
+
+                PROVIDER_JAZZ -> listOf(
+                    TRANSPORT_DATACHANNEL,
+                    TRANSPORT_VP8CHANNEL,
+                    TRANSPORT_SEICHANNEL
+                )
+
                 else -> supportedTransports
             }
         }
@@ -100,6 +124,7 @@ data class LocationConfig(
                 TRANSPORT_DATACHANNEL, "data", "dc" -> TRANSPORT_DATACHANNEL
                 TRANSPORT_VP8CHANNEL, "vp8", "video_vp8", "video-vp8" -> TRANSPORT_VP8CHANNEL
                 TRANSPORT_SEICHANNEL, "sei", "sei_channel", "sei-channel", "h264_sei" -> TRANSPORT_SEICHANNEL
+                TRANSPORT_VIDEOCHANNEL, "video", "video_channel", "video-channel", "qrcode", "qr" -> TRANSPORT_VIDEOCHANNEL
                 else -> DEFAULT_TRANSPORT
             }
             val supported = supportedTransportsForProvider(provider)
@@ -123,6 +148,7 @@ data class LocationConfig(
                 TRANSPORT_DATACHANNEL -> "DataChannel"
                 TRANSPORT_VP8CHANNEL -> "VP8"
                 TRANSPORT_SEICHANNEL -> "SEI"
+                TRANSPORT_VIDEOCHANNEL -> "VideoChannel"
                 else -> "VP8"
             }
         }
